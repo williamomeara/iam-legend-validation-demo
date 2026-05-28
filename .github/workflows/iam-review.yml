@@ -3,8 +3,8 @@ name: iam-legend review
 on:
   pull_request:
     paths:
-      - '**.tf'
-      - '**.py'
+      - 'deployment/**'
+      - 'app/**'
       - '**.sh'
       - 'Makefile'
       - '.github/workflows/iam-review.yml'
@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # WIF auth so iam-legend's testIamPermissions calls answer for the
+      # deployer SA (live diff). Matches the pattern in
+      # https://github.com/googlecloudplatform/agent-starter-pack pr_checks.yaml.
       - name: Authenticate to GCP via Workload Identity Federation
         id: auth
         uses: google-github-actions/auth@v2
@@ -28,37 +31,13 @@ jobs:
           workload_identity_provider: projects/372139006998/locations/global/workloadIdentityPools/iam-legend-demo/providers/github-demo
           service_account: iam-legend-demo-deployer@tendermatch-prod.iam.gserviceaccount.com
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.9.0'
-
-      - name: terraform plan
-        working-directory: deployment/terraform/dev
-        run: |
-          terraform init -backend=false
-          terraform plan -out=plan.tfplan \
-            -var="project_id=tendermatch-prod" \
-            -var="project_name=tendermatch-prod" \
-            -var="prod_project_id=tendermatch-prod" \
-            -var="staging_project_id=tendermatch-prod" \
-            -var="cicd_runner_project_id=tendermatch-prod" \
-            -var="region=us-central1" \
-            -var="host_connection_name=iam-legend-demo-host" \
-            -var="repository_name=iam-legend-validation-demo" \
-            -var="repository_owner=williamomeara" \
-            -var="github_app_installation_id=0" \
-            -var="github_pat_secret_id=stub" \
-            -var="telemetry_logs_filter=NOT logName=~\"projects/.*/logs/cloudaudit.*\"" \
-            -var="telemetry_sink_name=iam-legend-demo-sink" \
-            -var="telemetry_bigquery_dataset_id=iam_legend_demo_telemetry" || {
-              echo "terraform plan failed — falling back to static HCL analysis (iam-legend works on either)"
-              exit 0
-            }
-          terraform show -json plan.tfplan > plan.json || true
+      # No terraform plan step. The agent-starter-pack's official workflows
+      # don't plan in PRs either — terraform is run out-of-band via
+      # `make setup-dev-env`. iam-legend's HCL parser reads the .tf files
+      # directly, so we don't need plan.json for this analysis.
 
       - name: iam-legend review
-        uses: williamomeara/iam-legend@v0.1.0
+        uses: williamomeara/iam-legend@v0.1.1
         with:
-          terraform-plan: deployment/terraform/dev/plan.json
-          working-directory: .
+          working-directory: deployment/terraform/dev
           project-id: tendermatch-prod
