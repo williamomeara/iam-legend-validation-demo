@@ -35,26 +35,19 @@ jobs:
       - name: terraform plan
         working-directory: deployment/terraform/dev
         run: |
-          terraform init -backend=false
-          terraform plan -out=plan.tfplan \
-            -var="project_id=tendermatch-prod" \
-            -var="project_name=tendermatch-prod" \
-            -var="prod_project_id=tendermatch-prod" \
-            -var="staging_project_id=tendermatch-prod" \
-            -var="cicd_runner_project_id=tendermatch-prod" \
-            -var="region=us-central1" \
-            -var="host_connection_name=iam-legend-demo-host" \
-            -var="repository_name=iam-legend-validation-demo" \
-            -var="repository_owner=williamomeara" \
-            -var="github_app_installation_id=0" \
-            -var="github_pat_secret_id=stub" \
-            -var="telemetry_logs_filter=NOT logName=~\"projects/.*/logs/cloudaudit.*\"" \
-            -var="telemetry_sink_name=iam-legend-demo-sink" \
-            -var="telemetry_bigquery_dataset_id=iam_legend_demo_telemetry" || {
-              echo "terraform plan failed — falling back to static HCL analysis (iam-legend works on either)"
+          set -e
+          terraform init -backend=false -input=false
+          # Plan against the dev module. -input=false means missing required vars
+          # FAIL FAST instead of hanging on a prompt. The dev module's only
+          # required var is dev_project_id.
+          terraform plan -out=plan.tfplan -input=false \
+            -var="dev_project_id=tendermatch-prod" \
+            -var="project_name=iam-legend-demo" \
+            || {
+              echo "::warning::terraform plan failed — iam-legend will run in static HCL mode"
               exit 0
             }
-          terraform show -json plan.tfplan > plan.json || true
+          terraform show -json plan.tfplan > plan.json
 
       - name: iam-legend review
         uses: williamomeara/iam-legend@v0.1.0
