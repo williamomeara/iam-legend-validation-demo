@@ -1,0 +1,64 @@
+name: iam-legend review
+
+on:
+  pull_request:
+    paths:
+      - '**.tf'
+      - '**.py'
+      - '**.sh'
+      - 'Makefile'
+      - '.github/workflows/iam-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/372139006998/locations/global/workloadIdentityPools/iam-legend-demo/providers/github-demo
+          service_account: iam-legend-demo-deployer@tendermatch-prod.iam.gserviceaccount.com
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.0'
+
+      - name: terraform plan
+        working-directory: deployment/terraform/dev
+        run: |
+          terraform init -backend=false
+          terraform plan -out=plan.tfplan \
+            -var="project_id=tendermatch-prod" \
+            -var="project_name=tendermatch-prod" \
+            -var="prod_project_id=tendermatch-prod" \
+            -var="staging_project_id=tendermatch-prod" \
+            -var="cicd_runner_project_id=tendermatch-prod" \
+            -var="region=us-central1" \
+            -var="host_connection_name=iam-legend-demo-host" \
+            -var="repository_name=iam-legend-validation-demo" \
+            -var="repository_owner=williamomeara" \
+            -var="github_app_installation_id=0" \
+            -var="github_pat_secret_id=stub" \
+            -var="telemetry_logs_filter=NOT logName=~\"projects/.*/logs/cloudaudit.*\"" \
+            -var="telemetry_sink_name=iam-legend-demo-sink" \
+            -var="telemetry_bigquery_dataset_id=iam_legend_demo_telemetry" || {
+              echo "terraform plan failed — falling back to static HCL analysis (iam-legend works on either)"
+              exit 0
+            }
+          terraform show -json plan.tfplan > plan.json || true
+
+      - name: iam-legend review
+        uses: williamomeara/iam-legend@v0.1.0
+        with:
+          terraform-plan: deployment/terraform/dev/plan.json
+          working-directory: .
+          project-id: tendermatch-prod
