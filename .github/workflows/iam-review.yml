@@ -37,7 +37,7 @@ jobs:
       # directly, so we don't need plan.json for this analysis.
 
       - name: iam-legend review
-        uses: williamomeara/iam-legend@v0.1.0
+        uses: williamomeara/iam-legend@v0.1.1
         with:
           working-directory: deployment/terraform/dev
           project-id: tendermatch-prod
